@@ -33,11 +33,6 @@ aramak isteyenler için tasarlandı.
 - `st.cache_data(ttl=300)` ile aynı hissenin verisi 5 dakika boyunca önbellekten gelir,
   gereksiz Yahoo Finance isteği atılmaz.
 
-## Ekran görüntüsü
-
-Uygulamayı çalıştırdıktan sonra bir hisse sembolü (ör. `AAPL`, `TSLA`, `NVDA`) yazıp
-**ANALİZ ET** butonuna basman ya da hazır kısayollardan birine tıklaman yeterli.
-
 ## Gereksinimler
 
 - Python 3.9 veya üzeri
@@ -50,14 +45,10 @@ Uygulamayı çalıştırdıktan sonra bir hisse sembolü (ör. `AAPL`, `TSLA`, `
 git clone https://github.com/KULLANICI_ADIN/REPO_ADIN.git
 cd REPO_ADIN
 
-# 2) (Önerilir) sanal ortam oluştur
-python -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
-
-# 3) Bağımlılıkları kur
+# 2) Bağımlılıkları kur
 pip install -r requirements.txt
 
-# 4) Uygulamayı başlat
+# 3) Uygulamayı başlat
 streamlit run app.py
 ```
 
@@ -73,34 +64,6 @@ Uygulamayı durdurmak için terminalde `Ctrl + C` yeterli.
 | `ModuleNotFoundError` | `pip install -r requirements.txt` komutunu tekrar çalıştır, sanal ortamın aktif olduğundan emin ol |
 | Veri gelmiyor / boş sonuç | Sembolü kontrol et (`AAPL` gibi ABD borsası sembolleri en stabil çalışır), birkaç saniye bekleyip tekrar dene |
 | Yahoo Finance rate-limit hatası | Çok sık istek atıldığında geçici olur; ~30 saniye bekleyip tekrar dene |
-| Streamlit üst çubuğu içerikle çakışıyor | Tarayıcı önbelleğini temizleyip sayfayı yenile |
-
-## GitHub'a yükleme
-
-```bash
-cd optionsx-streamlit
-git init
-git add .
-git commit -m "Idea of Money — ilk sürüm"
-git branch -M main
-git remote add origin https://github.com/KULLANICI_ADIN/REPO_ADIN.git
-git push -u origin main
-```
-
-> `KULLANICI_ADIN/REPO_ADIN` kısmını GitHub'da oluşturduğun reponun adresiyle değiştir.
-> Önce github.com üzerinde boş bir repo oluşturman gerekiyor (README eklemeden).
-
-## Streamlit Community Cloud'a deploy
-
-1. https://share.streamlit.io adresine git, GitHub hesabınla giriş yap.
-2. **New app** butonuna tıkla.
-3. Repository olarak yukarıda push ettiğin repoyu seç.
-4. Branch: `main`, Main file path: `app.py`.
-5. **Deploy** butonuna tıkla — birkaç dakika içinde uygulamanın linki hazır olur
-   (ör. `https://senin-repo-adın.streamlit.app`).
-
-Her `git push` yaptığında Streamlit Cloud uygulamayı otomatik olarak günceller. Yeni bir
-kütüphane eklersen `requirements.txt`'ye eklemeyi unutma, yoksa deploy hata verir.
 
 ## Proje yapısı
 
