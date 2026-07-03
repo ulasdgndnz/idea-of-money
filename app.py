@@ -14,7 +14,7 @@ from datetime import datetime
 # SAYFA AYARLARI
 # ──────────────────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="OPTIONSx — Opsiyon Analiz Terminali",
+    page_title="Idea of Money — Opsiyon Analiz Terminali",
     page_icon="📈",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -38,8 +38,14 @@ st.markdown("""
 * {font-family:'IBM Plex Sans',sans-serif;}
 h1,h2,h3,.mono{font-family:'IBM Plex Mono',monospace !important;}
 
-/* Streamlit'in varsayılan üst boşluğunu azalt */
-.block-container{padding-top:1.5rem;max-width:1500px;}
+/* Streamlit'in üst araç çubuğu (menü/deploy) sabit ve şeffaf geldiği için
+   başlığın üzerine biniyordu — arka planını sayfa rengiyle eşitleyip
+   altındaki içerik boşluğunu artırıyoruz */
+header[data-testid="stHeader"]{
+  background:var(--bg);
+  height:3.2rem;
+}
+.block-container{padding-top:4rem;max-width:1500px;}
 
 /* Metric kartları */
 div[data-testid="stMetric"]{
@@ -70,6 +76,30 @@ div[data-testid="stMetricValue"]{
   margin:18px 0 8px;border-bottom:1px solid var(--bdr);padding-bottom:6px;
 }
 .pos{color:var(--grn);} .neg{color:var(--red);}
+
+/* Özel gösterge kartları (RSI durum rozeti, yön işaretli SMA/EMA/Bollinger) */
+.ind-card{
+  background:var(--card);border:1px solid var(--bdr);border-radius:8px;
+  padding:12px 14px;height:100%;
+}
+.ind-label{
+  font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--t3);
+  letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;
+}
+.ind-value{
+  font-family:'IBM Plex Mono',monospace;font-size:26px;font-weight:600;
+  color:var(--t1);line-height:1.2;
+}
+.badge{
+  display:inline-block;padding:2px 10px;border-radius:12px;
+  font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;
+  margin-top:6px;letter-spacing:.5px;
+}
+.badge-red{background:rgba(248,81,73,.15);color:var(--red);}
+.badge-gray{background:rgba(118,139,158,.15);color:var(--t2);}
+.badge-green{background:rgba(57,211,83,.15);color:var(--grn);}
+.arrow-up{color:var(--grn);}
+.arrow-down{color:var(--red);}
 </style>
 """, unsafe_allow_html=True)
 
@@ -155,16 +185,15 @@ def calc_technicals(hist):
     }
 
 
-def calculate_max_pain(ticker, exp_date, current_price):
+def calculate_max_pain_from_chain(calls, puts, current_price):
     try:
-        chain = ticker.option_chain(exp_date)
-        calls = chain.calls[['strike', 'openInterest']].copy()
-        puts = chain.puts[['strike', 'openInterest']].copy()
-        strikes = sorted(set(calls['strike'].tolist() + puts['strike'].tolist()))
+        c = calls[['strike', 'openInterest']].copy()
+        p = puts[['strike', 'openInterest']].copy()
+        strikes = sorted(set(c['strike'].tolist() + p['strike'].tolist()))
         pain = {}
         for s in strikes:
-            cp = sum(max(0, s - r['strike']) * r['openInterest'] for _, r in calls.iterrows())
-            pp = sum(max(0, r['strike'] - s) * r['openInterest'] for _, r in puts.iterrows())
+            cp = sum(max(0, s - r['strike']) * r['openInterest'] for _, r in c.iterrows())
+            pp = sum(max(0, r['strike'] - s) * r['openInterest'] for _, r in p.iterrows())
             pain[s] = cp + pp
         if pain:
             return round(float(min(pain, key=pain.get)), 2)
@@ -213,6 +242,7 @@ def get_option_data(ticker_symbol):
         "volume": info.get("volume", 0),
         "market_cap": info.get("marketCap", 0),
         "pe_ratio": safe_float(info.get("trailingPE")),
+        "peg_ratio": safe_float(info.get("pegRatio") or info.get("trailingPegRatio")),
         "week_52_high": safe_float(info.get("fiftyTwoWeekHigh")),
         "week_52_low": safe_float(info.get("fiftyTwoWeekLow")),
         "dividend_yield": safe_float(info.get("dividendYield")),
@@ -250,6 +280,7 @@ def get_option_data(ticker_symbol):
 
             exp_dt = datetime.strptime(exp_date, "%Y-%m-%d")
             days_to_exp = (exp_dt - datetime.now()).days
+            exp_max_pain = calculate_max_pain_from_chain(calls, puts, current_price)
 
             expiration_summary.append({
                 "date": exp_date,
@@ -260,6 +291,7 @@ def get_option_data(ticker_symbol):
                 "put_volume": put_vol,
                 "put_call_ratio": round(put_oi / call_oi, 2) if call_oi > 0 else 0,
                 "total_oi": call_oi + put_oi,
+                "max_pain": exp_max_pain,
             })
 
             for _, row in combined.iterrows():
@@ -288,7 +320,7 @@ def get_option_data(ticker_symbol):
         except Exception:
             continue
 
-    max_pain = calculate_max_pain(ticker, expirations[0], current_price)
+    max_pain = expiration_summary[0]["max_pain"] if expiration_summary else None
 
     calls_data = [o for o in all_options if o['type'] == 'CALL']
     puts_data = [o for o in all_options if o['type'] == 'PUT']
@@ -353,7 +385,7 @@ PLOTLY_LAYOUT = dict(
 # ARAYÜZ — ÜST BAR / ARAMA
 # ──────────────────────────────────────────────────────────────────────────
 
-st.markdown('<div class="optx-title">OPTIONS<span class="hl">x</span></div>', unsafe_allow_html=True)
+st.markdown('<div class="optx-title">Idea of <span class="hl">Money</span></div>', unsafe_allow_html=True)
 st.caption("Opsiyon Analiz Terminali · yfinance verisiyle çalışır")
 
 col_search, col_btn = st.columns([4, 1])
@@ -421,31 +453,56 @@ with hcol2:
 
 # ── TEMEL VERİLER ──
 st.markdown('<div class="optx-section">Temel Veriler</div>', unsafe_allow_html=True)
-m1, m2, m3, m4, m5, m6 = st.columns(6)
+m1, m2, m3, m4, m5, m6, m7 = st.columns(7)
 m1.metric("Hacim", fnum(stock['volume']))
 m2.metric("Piyasa Değeri", fnum(stock['market_cap']))
 m3.metric("F/K Oranı", stock['pe_ratio'] or "—")
-m4.metric("52H Yüksek", f"${stock['week_52_high']}" if stock['week_52_high'] else "—")
-m5.metric("52H Düşük", f"${stock['week_52_low']}" if stock['week_52_low'] else "—")
-m6.metric("Beta", stock['beta'] or "—")
+m4.metric("PEG Oranı", stock['peg_ratio'] or "—")
+m5.metric("52H Yüksek", f"${stock['week_52_high']}" if stock['week_52_high'] else "—")
+m6.metric("52H Düşük", f"${stock['week_52_low']}" if stock['week_52_low'] else "—")
+m7.metric("Beta", stock['beta'] or "—")
 
 # ── TEKNİK GÖSTERGELER ──
 st.markdown('<div class="optx-section">Teknik Göstergeler</div>', unsafe_allow_html=True)
-t1, t2, t3, t4, t5, t6, t7 = st.columns(7)
-t1.metric("RSI (14)", tech['rsi'] or "—")
-t2.metric("SMA 20", f"${tech['sma20']}" if tech['sma20'] else "—")
-t3.metric("SMA 50", f"${tech['sma50']}" if tech['sma50'] else "—")
-t4.metric("EMA 20", f"${tech['ema20']}" if tech['ema20'] else "—")
-t5.metric("MACD", tech['macd'] if tech['macd'] is not None else "—",
-          delta="Bullish" if (tech['macd_hist'] or 0) > 0 else "Bearish")
-t6.metric("ATR (14)", f"${tech['atr']}" if tech['atr'] else "—")
-t7.metric("Stochastic %K", tech['stoch_k'] or "—")
 
-b1, b2, b3, b4 = st.columns(4)
-b1.metric("Bollinger Üst", f"${tech['bb_upper']}" if tech['bb_upper'] else "—")
-b2.metric("Bollinger Orta", f"${tech['bb_mid']}" if tech['bb_mid'] else "—")
-b3.metric("Bollinger Alt", f"${tech['bb_lower']}" if tech['bb_lower'] else "—")
-b4.metric("Momentum (10g)", f"%{tech['momentum']}" if tech['momentum'] is not None else "—")
+cur_price = stock['current_price']
+
+
+def rsi_badge(rsi_val):
+    if rsi_val is None:
+        return '<span class="badge badge-gray">Veri yok</span>'
+    if rsi_val >= 70:
+        return '<span class="badge badge-red">Aşırı Alım</span>'
+    if rsi_val <= 30:
+        return '<span class="badge badge-green">Aşırı Satım</span>'
+    return '<span class="badge badge-gray">Nötr</span>'
+
+
+def render_ind_card(col, label, value, badge_html):
+    val_txt = value if value is not None else "—"
+    col.markdown(
+        f'<div class="ind-card"><div class="ind-label">{label}</div>'
+        f'<div class="ind-value">{val_txt}</div>{badge_html}</div>',
+        unsafe_allow_html=True
+    )
+
+
+t1, t2, t3, t4 = st.columns(4)
+render_ind_card(t1, "RSI (14)", tech['rsi'], rsi_badge(tech['rsi']))
+t2.metric("SMA 20", f"${tech['sma20']}" if tech['sma20'] else "—",
+          delta=round(cur_price - tech['sma20'], 2) if tech['sma20'] else None)
+t3.metric("SMA 50", f"${tech['sma50']}" if tech['sma50'] else "—",
+          delta=round(cur_price - tech['sma50'], 2) if tech['sma50'] else None)
+t4.metric("EMA 20", f"${tech['ema20']}" if tech['ema20'] else "—",
+          delta=round(cur_price - tech['ema20'], 2) if tech['ema20'] else None)
+
+b1, b2, b3 = st.columns(3)
+b1.metric("Bollinger Üst", f"${tech['bb_upper']}" if tech['bb_upper'] else "—",
+          delta=round(cur_price - tech['bb_upper'], 2) if tech['bb_upper'] else None)
+b2.metric("Bollinger Orta", f"${tech['bb_mid']}" if tech['bb_mid'] else "—",
+          delta=round(cur_price - tech['bb_mid'], 2) if tech['bb_mid'] else None)
+b3.metric("Bollinger Alt", f"${tech['bb_lower']}" if tech['bb_lower'] else "—",
+          delta=round(cur_price - tech['bb_lower'], 2) if tech['bb_lower'] else None)
 
 # ── SENTIMENT / MAX PAIN ──
 st.markdown('<div class="optx-section">Piyasa Hissiyatı</div>', unsafe_allow_html=True)
@@ -533,52 +590,95 @@ with g4:
     fig_pie.update_layout(**{**PLOTLY_LAYOUT, 'height': 320, 'margin': dict(t=16, b=16, l=16, r=16)})
     st.plotly_chart(fig_pie, use_container_width=True)
 
-# ── OPSİYON TABLOSU ──
+# ── OPSİYON TABLOSU (Vade bazlı dropdown) ──
 st.markdown('<div class="optx-section">Opsiyon Zinciri</div>', unsafe_allow_html=True)
+st.caption("Her vadeyi genişleterek o vadenin özetini ve strike bazlı detayını görebilirsin.")
 
-f1, f2, f3 = st.columns([1.5, 1, 2])
-with f1:
-    exp_filter = st.selectbox("Vade", options=["Tümü"] + data["expirations"])
-with f2:
-    type_filter = st.radio("Tip", options=["Tümü", "CALL", "PUT"], horizontal=True)
-with f3:
-    strike_search = st.text_input("Strike fiyatına göre ara", placeholder="Örn: 150")
-
-df = pd.DataFrame(options)
-if exp_filter != "Tümü":
-    df = df[df["expiration"] == exp_filter]
-if type_filter != "Tümü":
-    df = df[df["type"] == type_filter]
-if strike_search:
-    try:
-        val = float(strike_search)
-        df = df[df["strike"].astype(str).str.contains(strike_search) | (df["strike"] == val)]
-    except ValueError:
-        pass
-
-df_display = df[["expiration", "days_to_exp", "type", "strike", "lastPrice", "bid", "ask",
-                  "volume", "openInterest", "impliedVolatility", "moneyness"]].rename(columns={
+DISPLAY_COLS = ["expiration", "days_to_exp", "type", "strike", "lastPrice", "bid", "ask",
+                 "volume", "openInterest", "impliedVolatility", "moneyness"]
+DISPLAY_RENAME = {
     "expiration": "Vade", "days_to_exp": "Gün", "type": "Tip", "strike": "Strike",
     "lastPrice": "Son Fiyat", "bid": "Alış", "ask": "Satış", "volume": "Hacim",
     "openInterest": "Açık Poz.", "impliedVolatility": "IV %", "moneyness": "Durum"
-})
+}
 
-cap_col, btn_col = st.columns([4, 1])
-with cap_col:
-    st.caption(f"{len(df_display)} kayıt bulundu")
-with btn_col:
-    csv_bytes = df_display.to_csv(index=False).encode("utf-8-sig")
-    file_suffix = exp_filter if exp_filter != "Tümü" else "tum-vadeler"
+all_options_df = pd.DataFrame(options)
+
+# ── Tüm vadeleri tek seferde indirme ──
+all_cap_col, all_btn_col = st.columns([4, 1])
+with all_cap_col:
+    st.caption(f"Toplam {len(all_options_df)} kayıt · {len(exp_summary)} vade")
+with all_btn_col:
+    all_csv_bytes = all_options_df[DISPLAY_COLS].rename(columns=DISPLAY_RENAME).to_csv(index=False).encode("utf-8-sig")
     st.download_button(
-        label="⬇ CSV İndir",
-        data=csv_bytes,
-        file_name=f"{ticker_symbol}_opsiyonlar_{file_suffix}.csv",
+        label="⬇ Tüm Vadeleri İndir",
+        data=all_csv_bytes,
+        file_name=f"{ticker_symbol}_opsiyonlar_tum-vadeler.csv",
         mime="text/csv",
         use_container_width=True,
+        key="dl_all",
     )
 
-st.dataframe(
-    df_display,
-    use_container_width=True,
-    height=420,
-)
+for e in exp_summary:
+    exp_date = e["date"]
+    pcr = e["put_call_ratio"]
+    sentiment_label = get_sentiment(e["put_oi"], e["call_oi"])
+
+    max_pain_txt = f"${e['max_pain']}" if e.get("max_pain") else "—"
+    label = (f"📅  {exp_date}  ·  {e['days_to_exp']} gün  ·  "
+             f"P/C {pcr}  ·  {sentiment_label}  ·  Max Pain {max_pain_txt}  ·  Toplam OI {fnum(e['total_oi'])}")
+
+    with st.expander(label, expanded=False):
+        # ── Vade özeti ──
+        se1, se2, se3, se4, se5, se6, se7 = st.columns(7)
+        se1.metric("Call OI", fnum(e["call_oi"]))
+        se2.metric("Put OI", fnum(e["put_oi"]))
+        se3.metric("Put/Call Oranı", pcr)
+        se4.metric("Call Hacim", fnum(e["call_volume"]))
+        se5.metric("Put Hacim", fnum(e["put_volume"]))
+        se6.metric("Toplam Açık Poz.", fnum(e["total_oi"]))
+        se7.metric("Max Pain", f"${e['max_pain']}" if e.get("max_pain") else "—")
+
+        st.markdown("")
+
+        # ── Detay filtreleri (bu vadeye özel) ──
+        key_prefix = exp_date.replace("-", "")
+        f2, f3 = st.columns([1, 2])
+        with f2:
+            type_filter = st.radio("Tip", options=["Tümü", "CALL", "PUT"],
+                                    horizontal=True, key=f"type_{key_prefix}")
+        with f3:
+            strike_search = st.text_input("Strike fiyatına göre ara", placeholder="Örn: 150",
+                                           key=f"strike_{key_prefix}")
+
+        df_exp = all_options_df[all_options_df["expiration"] == exp_date].copy()
+        if type_filter != "Tümü":
+            df_exp = df_exp[df_exp["type"] == type_filter]
+        if strike_search:
+            try:
+                val = float(strike_search)
+                df_exp = df_exp[df_exp["strike"].astype(str).str.contains(strike_search) | (df_exp["strike"] == val)]
+            except ValueError:
+                pass
+
+        df_exp_display = df_exp[DISPLAY_COLS].rename(columns=DISPLAY_RENAME)
+
+        cap_col, btn_col = st.columns([4, 1])
+        with cap_col:
+            st.caption(f"{len(df_exp_display)} kayıt bulundu")
+        with btn_col:
+            csv_bytes = df_exp_display.to_csv(index=False).encode("utf-8-sig")
+            st.download_button(
+                label="⬇ Bu Vadeyi İndir",
+                data=csv_bytes,
+                file_name=f"{ticker_symbol}_opsiyonlar_{exp_date}.csv",
+                mime="text/csv",
+                use_container_width=True,
+                key=f"dl_{key_prefix}",
+            )
+
+        st.dataframe(
+            df_exp_display,
+            use_container_width=True,
+            height=420,
+        )
