@@ -490,6 +490,14 @@ else:
         hovertemplate='%{x|%d %b %Y}<br>$%{y:.2f}<extra></extra>',
     ), row=1, col=1)
 
+    price_hist['momentum21'] = price_hist['Close'].rolling(21).mean()
+    fig_price.add_trace(go.Scatter(
+        x=price_hist.index, y=price_hist['momentum21'],
+        mode='lines', line=dict(color='#e3b341', width=1.5, dash='dot'),
+        name="21G Momentum", showlegend=False,
+        hovertemplate='%{x|%d %b %Y}<br>21G Ort: $%{y:.2f}<extra></extra>',
+    ), row=1, col=1)
+
     vol_colors = ['#39d353' if c >= o else '#f85149'
                   for o, c in zip(price_hist['Open'], price_hist['Close'])]
     fig_price.add_trace(go.Bar(
@@ -498,8 +506,18 @@ else:
         name="Hacim", showlegend=False,
     ), row=2, col=1)
 
-    price_min = float(price_hist['Close'].min())
-    price_max = float(price_hist['Close'].max())
+    vol_momentum21 = price_hist['Volume'].rolling(21).mean()
+    fig_price.add_trace(go.Scatter(
+        x=price_hist.index, y=vol_momentum21,
+        mode='lines', line=dict(color='#e3b341', width=1.5, dash='dot'),
+        name="21G Hacim Momentum", showlegend=False,
+        hovertemplate='%{x|%d %b %Y}<br>21G Ort Hacim: %{y:,.0f}<extra></extra>',
+    ), row=2, col=1)
+
+    mom_min = price_hist['momentum21'].min(skipna=True)
+    mom_max = price_hist['momentum21'].max(skipna=True)
+    price_min = float(min(price_hist['Close'].min(), mom_min)) if pd.notna(mom_min) else float(price_hist['Close'].min())
+    price_max = float(max(price_hist['Close'].max(), mom_max)) if pd.notna(mom_max) else float(price_hist['Close'].max())
     price_pad = (price_max - price_min) * 0.08 or price_max * 0.02
     y_range = [price_min - price_pad, price_max + price_pad]
 
@@ -517,6 +535,158 @@ else:
     fig_price.update_xaxes(gridcolor='#1e2d3d', color='#3d5266')
 
     st.plotly_chart(fig_price, use_container_width=True)
+    st.caption("Turuncu kesikli çizgi: 21 günlük hareketli ortalama (momentum) — hem fiyat hem hacim için.")
+
+# ── CALL / PUT DUVARLARI ──
+st.markdown('<div class="optx-section">Call / Put Duvarları (Tüm Vadeler Toplamı)</div>', unsafe_allow_html=True)
+st.caption("Tüm vadelerdeki açık pozisyonlar strike bazında toplanır; en yüksek OI'ye sahip "
+           "strike'lar potansiyel direnç (call) ve destek (put) seviyeleri olarak işaretlenir.")
+
+wall_style = st.radio("Görselleştirme", options=["Direnç / Destek Çizgileri", "Yan OI Profili"],
+                       horizontal=True, key="wall_style", label_visibility="collapsed")
+
+WALL_N = 5
+
+
+def fmt_strike(s):
+    return f"{s:.0f}" if float(s).is_integer() else f"{s:.1f}"
+
+
+all_opts_for_walls = pd.DataFrame(options)
+
+if all_opts_for_walls.empty or price_hist.empty:
+    st.info("Duvar analizi için yeterli veri yok.")
+else:
+    strike_oi = all_opts_for_walls.groupby(["strike", "type"])["openInterest"].sum().reset_index()
+    call_oi_by_strike = strike_oi[strike_oi["type"] == "CALL"].sort_values("openInterest", ascending=False)
+    put_oi_by_strike = strike_oi[strike_oi["type"] == "PUT"].sort_values("openInterest", ascending=False)
+
+    top_calls = call_oi_by_strike.head(WALL_N).sort_values("strike")
+    top_puts = put_oi_by_strike.head(WALL_N).sort_values("strike")
+
+    if wall_style == "Direnç / Destek Çizgileri":
+        price_now_line = float(price_hist['Close'].iloc[-1])
+
+        # Fiyata aşırı uzak strike'lar ekseni gereksiz genişletmesin diye
+        # makul bir bant içinden en yüksek OI'li olanları seçiyoruz
+        band_oi = strike_oi[(strike_oi["strike"] >= price_now_line * 0.5) &
+                             (strike_oi["strike"] <= price_now_line * 1.5)]
+        band_calls = band_oi[band_oi["type"] == "CALL"].sort_values("openInterest", ascending=False)
+        band_puts = band_oi[band_oi["type"] == "PUT"].sort_values("openInterest", ascending=False)
+        top_calls_line = (band_calls.head(WALL_N) if not band_calls.empty else top_calls).sort_values("strike")
+        top_puts_line = (band_puts.head(WALL_N) if not band_puts.empty else top_puts).sort_values("strike")
+
+        fig_walls = go.Figure()
+        fig_walls.add_trace(go.Scatter(
+            x=price_hist.index, y=price_hist['Close'],
+            mode='lines', line=dict(color='#58a6ff', width=2),
+            fill='tozeroy', fillcolor='rgba(88,166,255,0.08)',
+            name="Kapanış", showlegend=False,
+            hovertemplate='%{x|%d %b %Y}<br>$%{y:.2f}<extra></extra>',
+        ))
+
+        wall_strikes_all = pd.concat([top_calls_line["strike"], top_puts_line["strike"]])
+        w_min = float(min(wall_strikes_all.min(), price_hist['Close'].min())) if not wall_strikes_all.empty else float(price_hist['Close'].min())
+        w_max = float(max(wall_strikes_all.max(), price_hist['Close'].max())) if not wall_strikes_all.empty else float(price_hist['Close'].max())
+        w_pad = (w_max - w_min) * 0.08 or w_max * 0.02
+
+        # Birbirine yakın seviyelerin etiketleri üst üste binmesin diye
+        # yakın olanları kademeli olarak yukarı kaydırıyoruz
+        combined_walls = pd.concat([
+            top_calls_line.assign(_kind="CALL", _color="#39d353"),
+            top_puts_line.assign(_kind="PUT", _color="#f85149"),
+        ]).sort_values("strike").reset_index(drop=True)
+
+        close_threshold = (w_max - w_min) * 0.035 or 1
+        prev_strike = None
+        shift = 0
+        for _, row in combined_walls.iterrows():
+            if prev_strike is not None and abs(row["strike"] - prev_strike) < close_threshold:
+                shift += 13
+            else:
+                shift = 0
+            prev_strike = row["strike"]
+
+            fig_walls.add_hline(
+                y=row["strike"], line_dash="dash", line_color=row["_color"], line_width=1.5,
+                annotation_text=f"{row['_kind'][0]} {fmt_strike(row['strike'])} · {fnum(row['openInterest'])}",
+                annotation_position="right", annotation_font_color=row["_color"], annotation_font_size=10,
+                annotation_yshift=shift,
+            )
+
+        fig_walls.update_layout(
+            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+            font=dict(family='IBM Plex Mono', color='#768b9e', size=11),
+            margin=dict(t=10, b=30, l=54, r=130), height=460,
+            xaxis=dict(gridcolor='#1e2d3d', color='#3d5266'),
+            yaxis=dict(gridcolor='#1e2d3d', color='#3d5266', title="Fiyat ($)", range=[w_min - w_pad, w_max + w_pad]),
+            showlegend=False,
+        )
+        st.plotly_chart(fig_walls, use_container_width=True)
+        st.caption("Etiketler: **C** = Call duvarı (direnç) · **P** = Put duvarı (destek) · sayı = toplam açık pozisyon")
+
+    else:
+        price_now = float(price_hist['Close'].iloc[-1])
+        band = strike_oi[(strike_oi["strike"] >= price_now * 0.7) & (strike_oi["strike"] <= price_now * 1.3)]
+        band_strikes = sorted(band["strike"].unique())
+        if not band_strikes:
+            band_strikes = sorted(set(top_calls["strike"].tolist() + top_puts["strike"].tolist()))
+
+        call_map = call_oi_by_strike.set_index("strike")["openInterest"].to_dict()
+        put_map = put_oi_by_strike.set_index("strike")["openInterest"].to_dict()
+        call_vals = [call_map.get(s, 0) for s in band_strikes]
+        put_vals = [-put_map.get(s, 0) for s in band_strikes]
+
+        fig_profile = make_subplots(rows=1, cols=2, column_widths=[0.3, 0.7],
+                                     shared_yaxes=True, horizontal_spacing=0.02)
+
+        fig_profile.add_trace(go.Bar(
+            y=band_strikes, x=call_vals, orientation='h',
+            marker_color='#39d353', name="Call OI", showlegend=False,
+        ), row=1, col=1)
+        fig_profile.add_trace(go.Bar(
+            y=band_strikes, x=put_vals, orientation='h',
+            marker_color='#f85149', name="Put OI", showlegend=False,
+        ), row=1, col=1)
+
+        fig_profile.add_trace(go.Scatter(
+            x=price_hist.index, y=price_hist['Close'],
+            mode='lines', line=dict(color='#58a6ff', width=2),
+            fill='tozeroy', fillcolor='rgba(88,166,255,0.08)',
+            name="Kapanış", showlegend=False,
+        ), row=1, col=2)
+
+        y_min_p = min(band_strikes)
+        y_max_p = max(band_strikes)
+        y_pad_p = (y_max_p - y_min_p) * 0.05 or y_max_p * 0.02
+
+        fig_profile.update_layout(
+            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+            font=dict(family='IBM Plex Mono', color='#768b9e', size=11),
+            margin=dict(t=10, b=30, l=54, r=10), height=440,
+            barmode='overlay',
+            xaxis=dict(gridcolor='#1e2d3d', color='#3d5266', title="Açık Poz."),
+            xaxis2=dict(gridcolor='#1e2d3d', color='#3d5266'),
+            yaxis=dict(gridcolor='#1e2d3d', color='#3d5266', title="Strike / Fiyat ($)",
+                       range=[y_min_p - y_pad_p, y_max_p + y_pad_p]),
+            yaxis2=dict(gridcolor='#1e2d3d', color='#3d5266',
+                        range=[y_min_p - y_pad_p, y_max_p + y_pad_p]),
+        )
+        st.plotly_chart(fig_profile, use_container_width=True)
+
+    dl1, dl2 = st.columns(2)
+    with dl1:
+        st.markdown("**🟢 En Güçlü Call Duvarları (Direnç)**")
+        top_calls_display = top_calls.sort_values("openInterest", ascending=False).rename(
+            columns={"strike": "Strike", "openInterest": "Toplam OI"})
+        st.dataframe(top_calls_display[["Strike", "Toplam OI"]],
+                     use_container_width=True, hide_index=True, height=200)
+    with dl2:
+        st.markdown("**🔴 En Güçlü Put Duvarları (Destek)**")
+        top_puts_display = top_puts.sort_values("openInterest", ascending=False).rename(
+            columns={"strike": "Strike", "openInterest": "Toplam OI"})
+        st.dataframe(top_puts_display[["Strike", "Toplam OI"]],
+                     use_container_width=True, hide_index=True, height=200)
 
 # ── TEMEL VERİLER ──
 st.markdown('<div class="optx-section">Temel Veriler</div>', unsafe_allow_html=True)
