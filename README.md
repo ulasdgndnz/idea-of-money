@@ -33,6 +33,14 @@ aramak isteyenler için tasarlandı.
 - `st.cache_data(ttl=300)` ile aynı hissenin verisi 5 dakika boyunca önbellekten gelir,
   gereksiz Yahoo Finance isteği atılmaz.
 
+<p align="center">
+  <img src="assets/screenshots/1.png" width="800" alt="Genel görünüm" />
+</p>
+<p align="center">
+  <img src="assets/screenshots/2.png" width="400" alt="Sıralama" />
+  <img src="assets/screenshots/3.png" width="400" alt="Opsiyon zinciri" />
+</p>
+
 ## Gereksinimler
 
 - Python 3.9 veya üzeri
