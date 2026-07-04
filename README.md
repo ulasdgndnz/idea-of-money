@@ -37,10 +37,13 @@ aramak isteyenler için tasarlandı.
   <img src="assets/screenshots/1.png" width="800" alt="Genel görünüm" />
 </p>
 <p align="center">
-  <img src="assets/screenshots/2.png" width="800" alt="Sıralama" />
+  <img src="assets/screenshots/2.png" width="800" alt="Duvarlar" />
 </p>
 <p align="center">
-  <img src="assets/screenshots/3.png" width="800" alt="Opsiyon zinciri" />
+  <img src="assets/screenshots/3.png" width="800" alt="Sıralama" />
+</p>
+<p align="center">
+  <img src="assets/screenshots/4.png" width="800" alt="Opsiyon zinciri" />
 </p>
 
 ## Gereksinimler
