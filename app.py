@@ -8,6 +8,7 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 from datetime import datetime
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -219,11 +220,18 @@ def get_sentiment(put_oi, call_oi):
 
 
 @st.cache_data(ttl=300, show_spinner=False)
+def get_price_history(ticker_symbol, period="1y"):
+    t = yf.Ticker(ticker_symbol)
+    h = t.history(period=period)
+    return h
+
+
+@st.cache_data(ttl=300, show_spinner=False)
 def get_option_data(ticker_symbol):
     ticker = yf.Ticker(ticker_symbol)
 
     info = ticker.info
-    hist = ticker.history(period="3mo")
+    hist = ticker.history(period="1y")
 
     if hist.empty:
         return {"error": f"'{ticker_symbol}' için veri bulunamadı."}
@@ -451,6 +459,65 @@ with hcol2:
         f"</div>", unsafe_allow_html=True
     )
 
+# ── FİYAT GRAFİĞİ ──
+st.markdown('<div class="optx-section">Fiyat Grafiği</div>', unsafe_allow_html=True)
+
+period_options = {"1 Ay": "1mo", "3 Ay": "3mo", "6 Ay": "6mo", "1 Yıl": "1y", "2 Yıl": "2y"}
+period_label = st.radio("Aralık", options=list(period_options.keys()), index=3,
+                         horizontal=True, key="price_period", label_visibility="collapsed")
+selected_period = period_options[period_label]
+
+price_hist = get_price_history(ticker_symbol, selected_period)
+
+if price_hist.empty:
+    st.info("Bu hisse için fiyat geçmişi bulunamadı.")
+else:
+    price_start = float(price_hist['Close'].iloc[0])
+    price_end = float(price_hist['Close'].iloc[-1])
+    line_color = '#39d353' if price_end >= price_start else '#f85149'
+    fill_color = 'rgba(57,211,83,0.10)' if price_end >= price_start else 'rgba(248,81,73,0.10)'
+
+    fig_price = make_subplots(
+        rows=2, cols=1, shared_xaxes=True,
+        row_heights=[0.75, 0.25], vertical_spacing=0.03,
+    )
+
+    fig_price.add_trace(go.Scatter(
+        x=price_hist.index, y=price_hist['Close'],
+        mode='lines', line=dict(color=line_color, width=2),
+        fill='tozeroy', fillcolor=fill_color,
+        name="Kapanış", showlegend=False,
+        hovertemplate='%{x|%d %b %Y}<br>$%{y:.2f}<extra></extra>',
+    ), row=1, col=1)
+
+    vol_colors = ['#39d353' if c >= o else '#f85149'
+                  for o, c in zip(price_hist['Open'], price_hist['Close'])]
+    fig_price.add_trace(go.Bar(
+        x=price_hist.index, y=price_hist['Volume'],
+        marker_color=vol_colors, marker_line_width=0,
+        name="Hacim", showlegend=False,
+    ), row=2, col=1)
+
+    price_min = float(price_hist['Close'].min())
+    price_max = float(price_hist['Close'].max())
+    price_pad = (price_max - price_min) * 0.08 or price_max * 0.02
+    y_range = [price_min - price_pad, price_max + price_pad]
+
+    fig_price.update_layout(
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        font=dict(family='IBM Plex Mono', color='#768b9e', size=11),
+        margin=dict(t=10, b=30, l=54, r=10),
+        height=480,
+        xaxis_rangeslider_visible=False,
+        xaxis2=dict(gridcolor='#1e2d3d', color='#3d5266'),
+        yaxis=dict(gridcolor='#1e2d3d', color='#3d5266', title="Fiyat ($)", range=y_range),
+        yaxis2=dict(gridcolor='#1e2d3d', color='#3d5266', title="Hacim"),
+    )
+    fig_price.update_xaxes(gridcolor='#1e2d3d', color='#3d5266')
+
+    st.plotly_chart(fig_price, use_container_width=True)
+
 # ── TEMEL VERİLER ──
 st.markdown('<div class="optx-section">Temel Veriler</div>', unsafe_allow_html=True)
 m1, m2, m3, m4, m5, m6, m7 = st.columns(7)
@@ -545,14 +612,29 @@ puts_near = sorted([o for o in near if o["type"] == "PUT"], key=lambda x: x["str
 
 g1, g2 = st.columns(2)
 with g1:
-    st.caption(f"Açık Pozisyon (OI) — Strike Bazında · Vade: {near_exp}")
-    fig_oi = go.Figure()
-    fig_oi.add_bar(x=[o["strike"] for o in calls_near], y=[o["openInterest"] for o in calls_near],
-                    name="CALL OI", marker_color="rgba(57,211,83,.7)")
-    fig_oi.add_bar(x=[o["strike"] for o in puts_near], y=[o["openInterest"] for o in puts_near],
-                    name="PUT OI", marker_color="rgba(248,81,73,.6)")
-    fig_oi.update_layout(**{**PLOTLY_LAYOUT, 'barmode': 'overlay'})
-    st.plotly_chart(fig_oi, use_container_width=True)
+    st.caption("En Yüksek Açık Pozisyon (OI) ve Hacim — Tüm Vadeler")
+    all_opts_df = pd.DataFrame(options)
+
+    top_oi = all_opts_df.sort_values("openInterest", ascending=False).head(5)
+    top_vol = all_opts_df.sort_values("volume", ascending=False).head(5)
+
+    st.markdown("**🏆 En Yüksek Açık Pozisyon (Top 5)**")
+    st.dataframe(
+        top_oi[["expiration", "type", "strike", "openInterest", "volume", "impliedVolatility"]].rename(columns={
+            "expiration": "Vade", "type": "Tip", "strike": "Strike",
+            "openInterest": "Açık Poz.", "volume": "Hacim", "impliedVolatility": "IV %"
+        }),
+        use_container_width=True, hide_index=True, height=210,
+    )
+
+    st.markdown("**🔥 En Yüksek Hacim (Top 5)**")
+    st.dataframe(
+        top_vol[["expiration", "type", "strike", "volume", "openInterest", "impliedVolatility"]].rename(columns={
+            "expiration": "Vade", "type": "Tip", "strike": "Strike",
+            "volume": "Hacim", "openInterest": "Açık Poz.", "impliedVolatility": "IV %"
+        }),
+        use_container_width=True, hide_index=True, height=210,
+    )
 
 with g2:
     st.caption(f"Zımni Volatilite (IV) Eğrisi · Vade: {near_exp}")
@@ -625,8 +707,18 @@ for e in exp_summary:
     sentiment_label = get_sentiment(e["put_oi"], e["call_oi"])
 
     max_pain_txt = f"${e['max_pain']}" if e.get("max_pain") else "—"
+
+    pcr_md = f":green[P/C {pcr}]" if pcr < 1 else f":red[P/C {pcr}]"
+    if "Bullish" in sentiment_label:
+        sent_md = f":green[{sentiment_label}]"
+    elif "Bearish" in sentiment_label:
+        sent_md = f":red[{sentiment_label}]"
+    else:
+        sent_md = f":gray[{sentiment_label}]"
+    max_pain_md = f':color[Max Pain {max_pain_txt}]{{foreground="#0047AB"}}'
+
     label = (f"📅  {exp_date}  ·  {e['days_to_exp']} gün  ·  "
-             f"P/C {pcr}  ·  {sentiment_label}  ·  Max Pain {max_pain_txt}  ·  Toplam OI {fnum(e['total_oi'])}")
+             f"{pcr_md}  ·  {sent_md}  ·  {max_pain_md}  ·  Toplam OI {fnum(e['total_oi'])}")
 
     with st.expander(label, expanded=False):
         # ── Vade özeti ──
