@@ -17,17 +17,17 @@ aramak isteyenler için tasarlandı.
   yeşil/kırmızı yön okuyla işaretler
 
 **⛓️ Opsiyon zinciri**
-- Her vade tarihi ayrı bir açılır (dropdown) panel olarak listelenir
-- Panel başlığında o vadenin özeti: kalan gün, put/call oranı, sentiment, max pain, toplam açık pozisyon
+- Her vade tarihi ayrı bir açılır panel olarak listelenir
+- Panel başlığında o vadenin özeti: kalan gün, put/call oranı, max pain, toplam açık pozisyon
 - Panel içinde CALL/PUT tipine ve strike fiyatına göre filtrelenebilir detaylı tablo
 - Hem tüm vadeleri tek seferde hem de tek bir vadeyi ayrı ayrı **CSV olarak indirme**
 
 **📈 Piyasa hissiyatı & görselleştirme**
-- Put/Call oranı göstergesi (gauge chart) ve genel sentiment etiketi (Çok Bullish → Çok Bearish)
-- Strike bazında açık pozisyon (OI) grafiği
+- Put/Call oranı göstergesi (Bullish - Nötr - Bearish)
+- Strike bazında açık pozisyon grafiği
 - Zımni volatilite (IV) eğrisi
 - Vadelere göre açık pozisyon dağılımı
-- Call/Put hacim dağılımı (donut chart)
+- Call/Put hacim dağılımı
 
 **⚡ Performans**
 - `st.cache_data(ttl=300)` ile aynı hissenin verisi 5 dakika boyunca önbellekten gelir,
@@ -55,8 +55,8 @@ aramak isteyenler için tasarlandı.
 
 ```bash
 # 1) Projeyi klonla (veya zip olarak indirdiysen klasöre gir)
-git clone https://github.com/KULLANICI_ADIN/REPO_ADIN.git
-cd REPO_ADIN
+git clone https://github.com/ulasdgndnz/idea-of-money.git
+cd idea-of-money
 
 # 2) Bağımlılıkları kur
 pip install -r requirements.txt
